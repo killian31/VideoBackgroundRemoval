@@ -115,13 +115,11 @@ if __name__ == "__main__":
         vid_to_im.get_images()
     with open(args.bbox_file, "r") as f:
         bbox = [int(coord) for coord in f.read().split(" ")]
-    print(bbox)
     download_mobile_sam_weight(args.mobile_sam_weights)
     frames = sorted(os.listdir(args.dir_frames))
     initial_image_file = args.dir_frames + "/" + frames[0]
     image = cv2.imread(initial_image_file)
     # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    print(initial_image_file)
 
     model_type = "vit_t"
 
@@ -143,9 +141,6 @@ if __name__ == "__main__":
     )
     mask = masks[0]
     color = np.random.random(3)
-    print(color)
     h, w = mask.shape[-2:]
-    mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-    print(np.unique(masks[0]))
-    print(mask_image.shape)
+    mask_image = (mask.reshape(h, w, 1) * color.reshape(1, 1, -1)) * 255
     cv2.imwrite("mask.png", mask_image)
