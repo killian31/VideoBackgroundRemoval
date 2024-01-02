@@ -72,7 +72,12 @@ def download_mobile_sam_weight(path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--video_filename", type=str, help="path to the video")
+    parser.add_argument(
+        "--video_filename",
+        default="assets/example.mp4",
+        type=str,
+        help="path to the video",
+    )
     parser.add_argument(
         "--dir_frames",
         type=str,
@@ -137,10 +142,16 @@ if __name__ == "__main__":
         point_coords=None,
         point_labels=None,
         box=input_box[None, :],
-        multimask_output=False,
+        multimask_output=True,
     )
     mask = masks[0]
-    color = np.random.random(3)
+    # green color for greenscreen background
+    color = np.array([0, 144 / 255, 0])
     h, w = mask.shape[-2:]
-    mask_image = (mask.reshape(h, w, 1) * color.reshape(1, 1, -1)) * 255
+    mask_image = ((1 - mask).reshape(h, w, 1) * color.reshape(1, 1, -1)) * 255
     cv2.imwrite("mask.png", mask_image)
+    # show masked region from original image
+    masked_image = image * mask.reshape(h, w, 1)
+    # replace unmasked region with green for green screen effect
+    masked_image = masked_image + mask_image
+    cv2.imwrite("masked_image.png", masked_image)
