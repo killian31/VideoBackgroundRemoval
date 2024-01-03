@@ -1,4 +1,4 @@
-# VideoBackgroundRemoval
+# AI Powered Video Background Removal Tool
 ⚠️🏗️ WIP ⚠️🧰
 
 The Video Background Removal Tool is designed to enable users to effortlessly remove backgrounds from videos by selecting a subject in a single frame. This powerful tool is optimized to run on CPUs and boasts a user-friendly interface, making it ideal for a wide range of users, especially online content creators like YouTubers.
