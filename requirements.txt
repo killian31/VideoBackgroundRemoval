@@ -1,8 +1,14 @@
 matplotlib
+mobile_sam
 numpy
-opencv-python
+opencv_python
+opencv_python_headless
+Pillow
+Pillow
 PyQt5
+PyQt5_sip
+Requests
 torch
 tqdm
+transformers
 wget
-git+https://github.com/ChaoningZhang/MobileSAM.git
