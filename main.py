@@ -252,4 +252,6 @@ if __name__ == "__main__":
         args.bbox_file,
         args.skip_vid2im,
         args.mobile_sam_weights,
+        args.output_dir,
+        args.output_video,
     )
