@@ -7,21 +7,14 @@ The Video Background Removal Tool is designed to enable users to effortlessly re
   <table>
     <tr>
       <td>
-        <video width="320" height="240" controls>
-          <source src="./assets/example.mp4" type="video/mp4">
-          Your browser does not support the video tag.
-        </video>
+        <img src="assets/example.gif" width="480" height="270" />
       </td>
       <td>
-        <video width="320" height="240" controls>
-          <source src="./assets/output_example.mp4" type="video/mp4">
-          Your browser does not support the video tag.
-        </video>
+        <img src="assets/output_example.gif" width="480" height="270" />
       </td>
     </tr>
   </table>
 </p>
-
 
 ## Contents
 Table of contents:
