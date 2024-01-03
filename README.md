@@ -7,10 +7,10 @@ The Video Background Removal Tool is designed to enable users to effortlessly re
   <table>
     <tr>
       <td>
-        <img src="assets/example.gif" width="480" height="270" />
+        <img src="assets/example.gif" width="385" height="216" />
       </td>
       <td>
-        <img src="assets/output_example.gif" width="480" height="270" />
+        <img src="assets/output_example.gif" width="385" height="216" />
       </td>
     </tr>
   </table>
