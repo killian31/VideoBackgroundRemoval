@@ -1,4 +1,5 @@
 # VideoBackgroundRemoval
+
 The Video Background Removal Tool is designed to enable users to effortlessly remove backgrounds from videos by selecting a subject in a single frame. This powerful tool is optimized to run on CPUs and boasts a user-friendly interface, making it ideal for a wide range of users, especially online content creators like YouTubers.
 
 ## How It Works
@@ -16,6 +17,7 @@ Read the [project description](https://killian31.github.io/VideoBackgroundRemova
 We welcome contributions from the community! To ensure a consistent code style, we ask contributors to follow these guidelines:
 
 ### Code Format
+
 Please format your code using the `black` code formatter.
 
 #### Installation
@@ -25,17 +27,11 @@ pip install black
 ```
 
 #### Usage
+
 To format your code:
+
 ```bash
 black .
 ```
-#### Pre-Commit Formatting
-To automatically format code before each commit:
-
-```bash
-pip install pre-commit
-pre-commit install
-```
-
 
 This setup will help maintain a consistent coding style throughout the project.
