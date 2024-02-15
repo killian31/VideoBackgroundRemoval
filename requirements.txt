@@ -1,5 +1,6 @@
 matplotlib
 git+https://github.com/ChaoningZhang/MobileSAM.git
+timm
 numpy
 opencv_python
 opencv_python_headless
