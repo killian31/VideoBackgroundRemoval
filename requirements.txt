@@ -1,5 +1,5 @@
 matplotlib
-mobile_sam
+git+https://github.com/ChaoningZhang/MobileSAM.git
 numpy
 opencv_python
 opencv_python_headless
