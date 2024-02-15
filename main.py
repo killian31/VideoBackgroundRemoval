@@ -7,6 +7,7 @@ import numpy as np
 import requests
 import torch
 import wget
+import yolov7
 from mobile_sam import SamPredictor, sam_model_registry
 from PIL import Image
 from tqdm import tqdm
@@ -95,16 +96,22 @@ def get_closest_bbox(bbox_list, bbox_target):
     return bbox_list[min_idx]
 
 
-def get_bboxes(image, model, image_processor, threshold=0.9):
-    inputs = image_processor(images=image, return_tensors="pt")
-    outputs = model(**inputs)
+def get_bboxes(image_file, image, model, image_processor, threshold=0.9):
+    if image_processor is None:
+        results = model(image_file)
+        predictions = results.pred[0]
+        boxes = predictions[:, :4].detach().numpy()
+        return boxes
+    else:
+        inputs = image_processor(images=image, return_tensors="pt")
+        outputs = model(**inputs)
 
-    target_sizes = torch.tensor([image.size[::-1]])
-    results = image_processor.post_process_object_detection(
-        outputs, threshold=threshold, target_sizes=target_sizes
-    )[0]
+        target_sizes = torch.tensor([image.size[::-1]])
+        results = image_processor.post_process_object_detection(
+            outputs, threshold=threshold, target_sizes=target_sizes
+        )[0]
 
-    return results["boxes"].detach().numpy()
+        return results["boxes"].detach().numpy()
 
 
 def segment_video(
@@ -115,6 +122,7 @@ def segment_video(
     bbox_file,
     skip_vid2im,
     mobile_sam_weights,
+    tracker_name="yolov7",
     output_dir="output_frames",
     output_video="output.mp4",
 ):
@@ -140,17 +148,21 @@ def segment_video(
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    model = YolosForObjectDetection.from_pretrained("hustvl/yolos-tiny")
-    image_processor = YolosImageProcessor.from_pretrained("hustvl/yolos-tiny")
-
     sam = sam_model_registry[model_type](checkpoint=args.mobile_sam_weights)
     sam.to(device=device)
     sam.eval()
 
     predictor = SamPredictor(sam)
 
-    model = YolosForObjectDetection.from_pretrained("hustvl/yolos-tiny")
-    image_processor = YolosImageProcessor.from_pretrained("hustvl/yolos-tiny")
+    if tracker_name == "yolov7":
+        model = yolov7.load("kadirnar/yolov7-tiny-v0.1", hf_model=True)
+        model.conf = 0.25  # NMS confidence threshold
+        model.iou = 0.45  # NMS IoU threshold
+        model.classes = None
+        image_processor = None
+    else:
+        model = YolosForObjectDetection.from_pretrained("hustvl/yolos-tiny")
+        image_processor = YolosImageProcessor.from_pretrained("hustvl/yolos-tiny")
 
     output_frames = []
 
@@ -158,7 +170,7 @@ def segment_video(
         image_file = dir_frames + "/" + frame
         image_pil = Image.open(image_file)
         image_np = np.array(image_pil)
-        bboxes = get_bboxes(image_pil, model, image_processor)
+        bboxes = get_bboxes(image_file, image_pil, model, image_processor)
         closest_bbox = get_closest_bbox(bboxes, bbox_orig)
         input_box = np.array(closest_bbox)
         predictor.set_image(image_np)
@@ -230,6 +242,14 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--tracker_name",
+        type=str,
+        default="yolov7",
+        help="tracker name",
+        choices=["yolov7", "yoloS"],
+    )
+
+    parser.add_argument(
         "--output_dir",
         type=str,
         default="output_frames",
@@ -254,4 +274,5 @@ if __name__ == "__main__":
         args.mobile_sam_weights,
         args.output_dir,
         args.output_video,
+        args.tracker_name,
     )
