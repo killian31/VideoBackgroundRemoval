@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 
 class ImageCreator:
-    def __init__(self, filename, imgs_dir, image_start=0, image_end=0):
+    def __init__(self, filename, imgs_dir, image_start=0, image_end=0, pbar=True):
         """
         :param str filename: The name of the video's filename.
         :param str imgs_dir: The directory where to store the image files.
@@ -17,6 +17,7 @@ class ImageCreator:
         self.imgs_dir = imgs_dir
         self.image_start = image_start
         self.image_end = image_end
+        self.pbar = pbar
         if not os.path.exists(imgs_dir):
             os.makedirs(imgs_dir)
 
@@ -30,7 +31,8 @@ class ImageCreator:
         zfill_max = len(str(total_frames))
         ok_count = 0
         print("Writing images...")
-        pbar = tqdm(total=total_frames)
+        if self.pbar:
+            pb = tqdm(total=total_frames)
         while success:
             if count >= self.image_start and count <= self.image_end:
                 cv2.imwrite(
@@ -38,7 +40,9 @@ class ImageCreator:
                 )
                 ok_count += 1
             success, image = vid.read()
-            pbar.update(1)
+            if self.pbar:
+                pb.update(1)
             count += 1
-        pbar.close()
+        if self.pbar:
+            pb.close()
         print("Wrote {} image files.".format(ok_count))

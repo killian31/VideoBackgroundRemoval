@@ -125,6 +125,7 @@ def segment_video(
     tracker_name="yolov7",
     output_dir="output_frames",
     output_video="output.mp4",
+    pbar=False,
 ):
     if not skip_vid2im:
         vid_to_im = ImageCreator(
@@ -132,6 +133,7 @@ def segment_video(
             dir_frames,
             image_start=image_start,
             image_end=image_end,
+            pbar=pbar,
         )
         vid_to_im.get_images()
     # Get fps of video
@@ -142,13 +144,16 @@ def segment_video(
     with open(bbox_file, "r") as f:
         bbox_orig = [int(coord) for coord in f.read().split(" ")]
     download_mobile_sam_weight(mobile_sam_weights)
-    frames = sorted(os.listdir(dir_frames))
+    if image_end == 0:
+        frames = sorted(os.listdir(dir_frames))[image_start:]
+    else:
+        frames = sorted(os.listdir(dir_frames))[image_start:image_end]
 
     model_type = "vit_t"
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    sam = sam_model_registry[model_type](checkpoint=args.mobile_sam_weights)
+    sam = sam_model_registry[model_type](checkpoint=mobile_sam_weights)
     sam.to(device=device)
     sam.eval()
 
@@ -166,7 +171,14 @@ def segment_video(
 
     output_frames = []
 
-    for frame in tqdm(frames):
+    if pbar:
+        pb = tqdm(frames)
+    else:
+        pb = frames
+
+    processed_frames = 0
+    for frame in pb:
+        processed_frames += 1
         image_file = dir_frames + "/" + frame
         image_pil = Image.open(image_file)
         image_np = np.array(image_pil)
@@ -187,6 +199,8 @@ def segment_video(
         masked_image = image_np * mask.reshape(h, w, 1)
         masked_image = masked_image + mask_image
         output_frames.append(masked_image)
+        if not pbar:
+            print(f"Processed frame {processed_frames}/{len(frames)}")
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
