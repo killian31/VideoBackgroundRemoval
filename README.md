@@ -29,7 +29,7 @@ Table of contents:
 
 ## How it works and state of development
 
-- [ ] **Initial Selection**: Users draw a bounding box around the desired character in the first frame of the video. Current state: user gives a bounding box as a txt file.
+- [x] **Initial Selection**: Users draw a bounding box around the desired character in the first frame of the video. Current state: user gives a bounding box as a txt file.
 - [x] **Processing**: The tool then processes the video, tracking and isolating the selected subject in all subsequent frames.
 - [x] **Output**: The final output is a sequence of the selected subject rendered against a green screen, suitable for further video editing and composition.
 
