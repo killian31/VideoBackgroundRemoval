@@ -4,6 +4,7 @@ opencv-python-headless~=4.9.0.80
 Pillow~=10.2.0
 Requests~=2.31.0
 streamlit~=1.31.0
+timm~=0.9.12
 torch~=2.1.2
 tqdm~=4.66.1
 transformers~=4.37.2
