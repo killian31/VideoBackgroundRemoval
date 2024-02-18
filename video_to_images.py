@@ -11,6 +11,7 @@ class ImageCreator:
         :param str imgs_dir: The directory where to store the image files.
         :param int image_start: The first image to be extracted.
         :param int image_end: The last image to be extracted, 0 if full video.
+        :param bool pbar: Whether to display a progress bar.
         """
 
         self.filename = filename

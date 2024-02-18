@@ -1,9 +1,10 @@
-import streamlit as st
-import io
 import contextlib
-import sys
+import io
 import re
+import sys
 import threading
+
+import streamlit as st
 
 
 class _Redirect:
@@ -108,12 +109,7 @@ class _Redirect:
                 raise Exception("Already entered")
         to = self.to or st
 
-        to.text(
-            f"Redirected output from "
-            f"{'stdout and stderr' if self.stdout and self.stderr else 'stdout' if self.stdout else 'stderr'}"
-            f"{' [' + self.io_args['regex'] + ']' if self.io_args['regex'] else ''}"
-            f":"
-        )
+        to.text("Logs:")
         self.st = to.empty()
         self.fun = getattr(self.st, self.format)
 
