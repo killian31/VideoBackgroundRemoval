@@ -70,6 +70,8 @@ if video_file is not None:
                 "./models/mobile_sam.pt",
                 output_video="video_segmented.mp4",
             )
+        # remove temp_images folder
+        os.system("rm -rf temp_images")
         # Display the segmented video
         st.video("video_segmented.mp4")
         st.write(f"Video saved to {os.path.abspath('video_segmented.mp4')}")
