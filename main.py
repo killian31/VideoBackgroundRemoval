@@ -197,13 +197,13 @@ def segment_video(
             point_coords=None,
             point_labels=None,
             box=input_box[None, :],
-            multimask_output=True,
+            multimask_output=False,
         )
         mask = masks[0]
         color = np.array([0, 144 / 255, 0])
         h, w = mask.shape[-2:]
-        mask_image = ((1 - mask).reshape(h, w, 1) * color.reshape(1, 1, -1)) * 255
-        masked_image = image_np * mask.reshape(h, w, 1)
+        mask_image = ((mask).reshape(h, w, 1) * color.reshape(1, 1, -1)) * 255
+        masked_image = image_np * (1 - mask).reshape(h, w, 1)
         masked_image = masked_image + mask_image
         output_frames.append(masked_image)
         if not pbar and processed_frames % 10 == 0:

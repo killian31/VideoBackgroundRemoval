@@ -89,7 +89,18 @@ if video_file is not None:
         st.video("./video_segmented.mp4")
         st.write(f"Video saved to {os.path.abspath('video_segmented.mp4')}")
         # Download the segmented video
-        st.markdown(
-            f'<a href="./video_segmented.mp4" download="./video_segmented.mp4">Download video</a>',
-            unsafe_allow_html=True,
+        vid_file = open("video_segmented.mp4", "rb")
+        vid_bytes = vid_file.read()
+        st.download_button(
+            label="Download Segmented Video",
+            data=vid_bytes,
+            file_name="video_segmented.mp4",
         )
+        vid_file.close()
+        # Interrupt button
+        if st.button("Stop"):
+            os.system("rm -rf temp_images")
+            os.system("rm -rf temp_bbox.txt")
+            os.system("rm -rf temp_processed_images")
+            os.system("rm -rf temp_video.mp4")
+            st.write("Process interrupted")
