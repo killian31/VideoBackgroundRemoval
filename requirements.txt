@@ -1,5 +1,4 @@
 matplotlib~=3.8.2
-mobile_sam~=1.0
 numpy~=1.26.4
 opencv_python~=4.9.0.80
 opencv_python_headless~=4.9.0.80
@@ -13,3 +12,4 @@ tqdm~=4.66.1
 transformers~=4.37.2
 wget~=3.2
 yolov7detect~=1.0.1
+git+https://github.com/ChaoningZhang/MobileSAM.git
