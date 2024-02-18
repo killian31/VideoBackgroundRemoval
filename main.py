@@ -1,5 +1,6 @@
 import argparse
 import os
+import time
 
 import cv2
 import matplotlib.pyplot as plt
@@ -122,6 +123,7 @@ def segment_video(
     bbox_file,
     skip_vid2im,
     mobile_sam_weights,
+    auto_detect=False,
     tracker_name="yolov7",
     output_dir="output_frames",
     output_video="output.mp4",
@@ -159,15 +161,16 @@ def segment_video(
 
     predictor = SamPredictor(sam)
 
-    if tracker_name == "yolov7":
-        model = yolov7.load("kadirnar/yolov7-tiny-v0.1", hf_model=True)
-        model.conf = 0.25  # NMS confidence threshold
-        model.iou = 0.45  # NMS IoU threshold
-        model.classes = None
-        image_processor = None
-    else:
-        model = YolosForObjectDetection.from_pretrained("hustvl/yolos-tiny")
-        image_processor = YolosImageProcessor.from_pretrained("hustvl/yolos-tiny")
+    if not auto_detect:
+        if tracker_name == "yolov7":
+            model = yolov7.load("kadirnar/yolov7-tiny-v0.1", hf_model=True)
+            model.conf = 0.25  # NMS confidence threshold
+            model.iou = 0.45  # NMS IoU threshold
+            model.classes = None
+            image_processor = None
+        else:
+            model = YolosForObjectDetection.from_pretrained("hustvl/yolos-tiny")
+            image_processor = YolosImageProcessor.from_pretrained("hustvl/yolos-tiny")
 
     output_frames = []
 
@@ -177,14 +180,18 @@ def segment_video(
         pb = frames
 
     processed_frames = 0
+    init_time = time.time()
     for frame in pb:
         processed_frames += 1
         image_file = dir_frames + "/" + frame
         image_pil = Image.open(image_file)
         image_np = np.array(image_pil)
-        bboxes = get_bboxes(image_file, image_pil, model, image_processor)
-        closest_bbox = get_closest_bbox(bboxes, bbox_orig)
-        input_box = np.array(closest_bbox)
+        if not auto_detect:
+            bboxes = get_bboxes(image_file, image_pil, model, image_processor)
+            closest_bbox = get_closest_bbox(bboxes, bbox_orig)
+            input_box = np.array(closest_bbox)
+        else:
+            input_box = np.array([0, 0, image_np.shape[1], image_np.shape[0]])
         predictor.set_image(image_np)
         masks, _, _ = predictor.predict(
             point_coords=None,
@@ -199,8 +206,17 @@ def segment_video(
         masked_image = image_np * mask.reshape(h, w, 1)
         masked_image = masked_image + mask_image
         output_frames.append(masked_image)
-        if not pbar:
-            print(f"Processed frame {processed_frames}/{len(frames)}")
+        if not pbar and processed_frames % 10 == 0:
+            remaining_time = (
+                (time.time() - init_time)
+                / processed_frames
+                * (len(frames) - processed_frames)
+            )
+            remaining_time = int(remaining_time)
+            remaining_time_str = f"{remaining_time//60}m {remaining_time%60}s"
+            print(
+                f"Processed frame {processed_frames}/{len(frames)} - Remaining time: {remaining_time_str}"
+            )
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
@@ -210,7 +226,7 @@ def segment_video(
             f"{output_dir}/frame_{str(idx).zfill(zfill_max)}.png",
             frame,
         )
-    vid_creator = VideoCreator(output_dir, output_video)
+    vid_creator = VideoCreator(output_dir, output_video, pbar=pbar)
     vid_creator.create_video(fps=int(fps))
 
 
@@ -276,6 +292,11 @@ if __name__ == "__main__":
         default="output.mp4",
         help="path to store the output video",
     )
+    parser.add_argument(
+        "--auto_detect",
+        action="store_true",
+        help="whether to use a bounding box to force the model to segment the object",
+    )
     args = parser.parse_args()
 
     segment_video(
@@ -286,6 +307,7 @@ if __name__ == "__main__":
         args.bbox_file,
         args.skip_vid2im,
         args.mobile_sam_weights,
+        args.auto_detect,
         args.output_dir,
         args.output_video,
         args.tracker_name,
