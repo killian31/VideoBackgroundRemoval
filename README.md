@@ -2,7 +2,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/killian31/VideoBackgroundRemoval.svg)](https://github.com/killian31/VideoBackgroundRemoval/stargazers)
 [![black](https://github.com/killian31/VideoBackgroundRemoval/actions/workflows/github-actions-black-formatting.yml/badge.svg)](https://github.com/killian31/VideoBackgroundRemoval/actions/workflows/github-actions-black-formatting.yml)
-⚠️🏗️ WIP ⚠️🧰
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://video-background-removal.streamlit.app)
 
 The Video Background Removal Tool is designed to enable users to effortlessly remove backgrounds from videos by selecting a subject in a single frame. This powerful tool is optimized to run on CPUs and boasts a user-friendly interface, making it ideal for a wide range of users, especially online content creators like YouTubers.
 
@@ -46,6 +46,14 @@ pip install -r requirements.txt --upgrade
 ## Usage
 
 ### Using the Streamlit app
+
+#### Online
+
+You can access the app online on
+[this page](https://video-background-removal.streamlit.app), hosted on Streamlit
+Community Cloud.
+
+#### Locally
 
 Run `streamlit run app.py` to launch the Streamlit app. Then, upload a video, draw a
 bounding box around what you want to remove the background from, using the sliders,
