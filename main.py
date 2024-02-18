@@ -156,7 +156,7 @@ def segment_video(
             point_coords=None,
             point_labels=None,
             box=input_box[None, :],
-            multimask_output=False,
+            multimask_output=True,
         )
         if reverse_mask:
             mask = masks[0]
