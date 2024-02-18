@@ -1,4 +1,5 @@
 # AI Powered Video Background Removal Tool
+
 [![GitHub stars](https://img.shields.io/github/stars/killian31/VideoBackgroundRemoval.svg)](https://github.com/killian31/VideoBackgroundRemoval/stargazers)
 [![black](https://github.com/killian31/VideoBackgroundRemoval/actions/workflows/github-actions-black-formatting.yml/badge.svg)](https://github.com/killian31/VideoBackgroundRemoval/actions/workflows/github-actions-black-formatting.yml)
 ⚠️🏗️ WIP ⚠️🧰
@@ -19,13 +20,14 @@ The Video Background Removal Tool is designed to enable users to effortlessly re
 </p>
 
 ## Contents
+
 Table of contents:
+
 - [State of development](#how-it-works-and-state-of-development)
 - [Installation](#installation)
-- [Usage](#usage) 
+- [Usage](#usage)
 - [Example](#example)
 - [Contribution](#how-to-contribute)
-
 
 ## How it works and state of development
 
@@ -34,6 +36,7 @@ Table of contents:
 - [x] **Output**: The final output is a sequence of the selected subject rendered against a green screen, suitable for further video editing and composition.
 
 ## Installation
+
 ```bash
 git clone https://github.com/killian31/VideoBackgroundRemoval.git
 cd VideoBackgroundRemoval
@@ -41,6 +44,15 @@ pip install -r requirements.txt --upgrade
 ```
 
 ## Usage
+
+### Using the Streamlit app
+
+Run `streamlit run app.py` to launch the Streamlit app. Then, upload a video, draw a
+bounding box around what you want to remove the background from, using the sliders,
+and click on Segment Video.
+
+### Command line
+
 ```bash
 usage: main.py [-h] [--video_filename VIDEO_FILENAME] [--dir_frames DIR_FRAMES] [--image_start IMAGE_START] [--image_end IMAGE_END] [--bbox_file BBOX_FILE]
                [--skip_vid2im] [--mobile_sam_weights MOBILE_SAM_WEIGHTS] [--output_dir OUTPUT_DIR] [--output_video OUTPUT_VIDEO]
@@ -67,7 +79,9 @@ options:
 ```
 
 ## Example
+
 The following command line is a working example from a video stored in the repo:
+
 ```bash
 python3 main.py --video_filename assets/example.mp4 --dir_frames ./frames --bbox_file bbox.txt --mobile_sam_weights models/mobile_sam.pt --output_dir output_frames --output_video output.mp4
 ```
