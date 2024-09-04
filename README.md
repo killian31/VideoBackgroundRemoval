@@ -37,9 +37,13 @@ Table of contents:
 
 ## Installation
 
+### With pyenv
+
 ```bash
 git clone https://github.com/killian31/VideoBackgroundRemoval.git
 cd VideoBackgroundRemoval
+pyenv virtualenv 3.11.9 vbr
+pyenv activate vbr
 pip install -r requirements.txt --upgrade
 ```
 
