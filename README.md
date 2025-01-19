@@ -29,22 +29,17 @@ Table of contents:
 - [Example](#example)
 - [Contribution](#how-to-contribute)
 
-## How it works and state of development
-
-- [x] **Initial Selection**: Users draw a bounding box around the desired character in the first frame of the video. Current state: user gives a bounding box as a txt file.
-- [x] **Processing**: The tool then processes the video, tracking and isolating the selected subject in all subsequent frames.
-- [x] **Output**: The final output is a sequence of the selected subject rendered against a green screen, suitable for further video editing and composition.
-
 ## Installation
 
-### With pyenv
+### With pyenv and poetry
 
 ```bash
 git clone https://github.com/killian31/VideoBackgroundRemoval.git
 cd VideoBackgroundRemoval
 pyenv virtualenv 3.11.9 vbr
 pyenv activate vbr
-pip install -r requirements.txt --upgrade
+pip install poetry
+poetry install
 ```
 
 ## Usage
@@ -58,8 +53,9 @@ and click on Segment Video.
 ### Command line
 
 ```bash
-usage: main.py [-h] [--video_filename VIDEO_FILENAME] [--dir_frames DIR_FRAMES] [--image_start IMAGE_START] [--image_end IMAGE_END] [--bbox_file BBOX_FILE]
-               [--skip_vid2im] [--mobile_sam_weights MOBILE_SAM_WEIGHTS] [--output_dir OUTPUT_DIR] [--output_video OUTPUT_VIDEO]
+usage: main.py [-h] [--video_filename VIDEO_FILENAME] [--dir_frames DIR_FRAMES] [--image_start IMAGE_START] [--image_end IMAGE_END] [--bbox_file BBOX_FILE] [--skip_vid2im]
+               [--mobile_sam_weights MOBILE_SAM_WEIGHTS] [--tracker_name {yolov7,yoloS}] [--output_dir OUTPUT_DIR] [--output_video OUTPUT_VIDEO] [--auto_detect]
+               [--background_color BACKGROUND_COLOR]
 
 options:
   -h, --help            show this help message and exit
@@ -76,10 +72,15 @@ options:
   --skip_vid2im         whether to write the video frames as images
   --mobile_sam_weights MOBILE_SAM_WEIGHTS
                         path to MobileSAM weights
+  --tracker_name {yolov7,yoloS}
+                        tracker name
   --output_dir OUTPUT_DIR
                         directory to store the output frames
   --output_video OUTPUT_VIDEO
                         path to store the output video
+  --auto_detect         whether to use a bounding box to force the model to segment the object
+  --background_color BACKGROUND_COLOR
+                        background color for the output (hex)
 ```
 
 ## Example
