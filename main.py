@@ -83,6 +83,7 @@ def segment_video(
     mobile_sam_weights,
     auto_detect=False,
     tracker_name="yolov7",
+    background_color="#009000",
     output_dir="output_frames",
     output_video="output.mp4",
     pbar=False,
@@ -101,6 +102,10 @@ def segment_video(
     vid = cv2.VideoCapture(video_filename)
     fps = vid.get(cv2.CAP_PROP_FPS)
     vid.release()
+    background_color = background_color.lstrip("#")
+    background_color = (
+        np.array([int(background_color[i : i + 2], 16) for i in (0, 2, 4)]) / 255.0
+    )
 
     with open(bbox_file, "r") as f:
         bbox_orig = [int(coord) for coord in f.read().split(" ")]
@@ -112,8 +117,13 @@ def segment_video(
 
     model_type = "vit_t"
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.backends.mps.is_available():
+        device = "mps"
+    elif torch.cuda.is_available():
 
+        device = "cuda"
+    else:
+        device = "cpu"
     sam = sam_model_registry[model_type](checkpoint=mobile_sam_weights)
     sam.to(device=device)
     sam.eval()
@@ -160,17 +170,19 @@ def segment_video(
         )
         if reverse_mask:
             mask = masks[0]
-            color = np.array([0, 144 / 255, 0])
             h, w = mask.shape[-2:]
-            mask_image = ((mask).reshape(h, w, 1) * color.reshape(1, 1, -1)) * 255
+            mask_image = (
+                (mask).reshape(h, w, 1) * background_color.reshape(1, 1, -1)
+            ) * 255
             masked_image = image_np * (1 - mask).reshape(h, w, 1)
             masked_image = masked_image + mask_image
             output_frames.append(masked_image)
         else:
             mask = masks[0]
-            color = np.array([0, 144 / 255, 0])
             h, w = mask.shape[-2:]
-            mask_image = ((1 - mask).reshape(h, w, 1) * color.reshape(1, 1, -1)) * 255
+            mask_image = (
+                (1 - mask).reshape(h, w, 1) * background_color.reshape(1, 1, -1)
+            ) * 255
             masked_image = image_np * mask.reshape(h, w, 1)
             masked_image = masked_image + mask_image
             output_frames.append(masked_image)
@@ -266,6 +278,12 @@ if __name__ == "__main__":
         action="store_true",
         help="whether to use a bounding box to force the model to segment the object",
     )
+    parser.add_argument(
+        "--background_color",
+        type=str,
+        default="#009000",
+        help="background color for the output (hex)",
+    )
     args = parser.parse_args()
 
     segment_video(
@@ -280,4 +298,5 @@ if __name__ == "__main__":
         args.output_dir,
         args.output_video,
         args.tracker_name,
+        args.background_color,
     )

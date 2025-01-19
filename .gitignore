@@ -1,1 +1,12 @@
 frames/*
+*.mov
+*.MOV
+*.mp4
+*.MP4
+*.jpg
+*.JPG
+__pycache__/*
+*.txt
+models/*
+temp_images/*
+.DS_Store

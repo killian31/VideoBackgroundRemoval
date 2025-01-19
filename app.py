@@ -1,15 +1,41 @@
 import os
+import warnings
 
+import cv2
 import streamlit as st
 from PIL import Image, ImageDraw
 
 import redirect as rd
 from main import segment_video
-from video_to_images import ImageCreator
+
+warnings.filterwarnings("ignore")
 
 
 def load_image(image_path):
     return Image.open(image_path)
+
+
+def extract_first_frame(video_path, output_image_path):
+    """
+    Extract the first frame from a video file and save it to disk.
+
+    Parameters:
+        video_path (str): Path to the video file.
+        output_image_path (str): Path to save the extracted frame.
+
+    Returns:
+        str: Path to the saved frame.
+    """
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Error: Unable to open video file: {video_path}")
+    ret, frame = cap.read()
+    cap.release()
+    if not ret:
+        raise ValueError("Error: Unable to read the first frame from the video.")
+    cv2.imwrite(output_image_path, frame)
+
+    return output_image_path
 
 
 st.title("Video Background Removal")
@@ -33,17 +59,13 @@ if video_file is not None:
     with open("temp_video.mp4", "wb") as f:
         f.write(video_file.getbuffer())
 
-    if not os.path.exists("temp_images"):
-        vid_to_im = ImageCreator(
-            "temp_video.mp4", "temp_images", image_start=0, image_end=0
-        )
-        vid_to_im.get_images()
-        # get initial frame filename (can vary depending on the video)
-        frame_path = os.path.join("temp_images", sorted(os.listdir("temp_images"))[0])
-    else:
-        frame_path = os.path.join("temp_images", sorted(os.listdir("temp_images"))[0])
+    if not os.path.exists("./temp_images"):
+        os.makedirs("./temp_images")
+    frame_path = extract_first_frame("temp_video.mp4", "temp_frame.jpg")
 
     use_bbox = st.checkbox("Use bounding box", value=False)
+    background_color = st.color_picker("Background keying color", "#009000")
+
     initial_frame = load_image(frame_path)
     original_width, original_height = initial_frame.width, initial_frame.height
     if use_bbox:
@@ -73,10 +95,11 @@ if video_file is not None:
             type="primary",
         ):
             st.write("Stopping...")
-            os.system("rm -rf ./temp_images")
-            os.system("rm -rf ./temp_bbox.txt")
-            os.system("rm -rf ./temp_processed_images")
-            os.system("rm -rf ./temp_video.mp4")
+            os.system("rm -r ./temp_images")
+            os.system("rm ./temp_bbox.txt")
+            os.system("rm -r ./temp_processed_images")
+            os.system("rm ./temp_video.mp4")
+            os.system("rm ./temp_frame.jpg")
             st.write("Process interrupted")
 
     with col1:
@@ -103,6 +126,7 @@ if video_file is not None:
                     skip_vid2im=False,
                     mobile_sam_weights="./models/mobile_sam.pt",
                     auto_detect=not use_bbox,
+                    background_color=background_color,
                     output_video="video_segmented.mp4",
                     output_dir="temp_processed_images",
                     pbar=False,

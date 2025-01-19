@@ -1,0 +1,30 @@
+[project]
+name = "vbr"
+version = "1.0.0"
+description = "Automatic background removal from an input video and a single user subject selection."
+authors = [
+    {name = "killian31",email = "80256683+killian31@users.noreply.github.com"}
+]
+license = {text = "Apache 2.0"}
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy (==1.26.4)",
+    "opencv-python (==4.9.0.80)",
+    "opencv-python-headless (>=4.9.0.80,<4.10.0.0)",
+    "pillow (>=10.2.0,<10.3.0)",
+    "requests (>=2.31.0,<2.32.0)",
+    "streamlit (>=1.31.0,<1.32.0)",
+    "timm (>=0.9.12,<0.10.0)",
+    "torch (>=2.1.2,<2.2.0)",
+    "tqdm (>=4.66.1,<4.67.0)",
+    "transformers (>=4.37.2,<4.38.0)",
+    "wget (>=3.2,<4.0)",
+    "yolov7detect (>=1.0.1,<1.1.0)",
+    "mobile-sam @ git+https://github.com/ChaoningZhang/MobileSAM.git"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
