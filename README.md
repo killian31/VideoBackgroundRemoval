@@ -23,7 +23,6 @@ The Video Background Removal Tool is designed to enable users to effortlessly re
 
 Table of contents:
 
-- [State of development](#how-it-works-and-state-of-development)
 - [Installation](#installation)
 - [Usage](#usage)
 - [Example](#example)
