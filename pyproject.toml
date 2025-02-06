@@ -22,7 +22,7 @@ dependencies = [
     "wget (>=3.2,<4.0)",
     "yolov7detect (>=1.0.1,<1.1.0)",
     "mobile-sam @ git+https://github.com/ChaoningZhang/MobileSAM.git",
-    "huggingface-hub (>=0.28.1,<0.29.0)"
+    "huggingface-hub (==0.24.7)"
 ]
 
 
