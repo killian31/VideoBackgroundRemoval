@@ -113,3 +113,7 @@ black .
 ```
 
 This setup will help maintain a consistent coding style throughout the project.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=killian31/VideoBackgroundRemoval&type=Date)](https://star-history.com/#killian31/VideoBackgroundRemoval&Date)
