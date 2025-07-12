@@ -116,8 +116,6 @@ This setup will help maintain a consistent coding style throughout the project.
 
 ## Star History
 
-## Star History
-
 <a href="https://www.star-history.com/#killian31/VideoBackgroundRemoval&Date">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=killian31/VideoBackgroundRemoval&type=Date&theme=dark" />
