@@ -157,6 +157,9 @@ def segment_video(
         image_np = np.array(image_pil)
         if not auto_detect:
             bboxes = get_bboxes(image_file, image_pil, model, image_processor)
+            if len(bboxes) == 0:
+                print(f"No bounding boxes detected in {image_file}. Skipping frame.")
+                continue
             closest_bbox = get_closest_bbox(bboxes, bbox_orig)
             input_box = np.array(closest_bbox)
         else:
@@ -188,15 +191,16 @@ def segment_video(
             output_frames.append(masked_image)
 
         if not pbar and processed_frames % 10 == 0:
+            current_time = time.time()
             remaining_time = (
-                (time.time() - init_time)
+                (current_time - init_time)
                 / processed_frames
                 * (len(frames) - processed_frames)
             )
             remaining_time = int(remaining_time)
             remaining_time_str = f"{remaining_time//60}m {remaining_time%60}s"
             print(
-                f"Processed frame {processed_frames}/{len(frames)} - Remaining time: {remaining_time_str}"
+                f"Processed frame {processed_frames}/{len(frames)} - ETA: {remaining_time_str} - FPS: {processed_frames / (current_time - init_time):.2f}"
             )
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
