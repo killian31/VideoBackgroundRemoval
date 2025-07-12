@@ -21,7 +21,7 @@ dependencies = [
     "transformers (>=4.37.2,<4.38.0)",
     "wget (>=3.2,<4.0)",
     "yolov7detect (>=1.0.1,<1.1.0)",
-    "mobile-sam @ git+https://github.com/ChaoningZhang/MobileSAM.git",
+    "efficienttam @ git+https://github.com/yformer/EfficientTAM.git",
     "huggingface-hub (==0.24.7)"
 ]
 

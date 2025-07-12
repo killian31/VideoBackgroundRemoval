@@ -8,6 +8,9 @@ import requests
 import torch
 import wget
 import yolov7
+from efficient_track_anything.build_efficienttam import (
+    build_efficienttam_video_predictor,
+)
 from mobile_sam import SamPredictor, sam_model_registry
 from PIL import Image
 from tqdm import tqdm
@@ -81,8 +84,6 @@ def segment_video(
     bbox_file,
     skip_vid2im,
     mobile_sam_weights,
-    auto_detect=False,
-    tracker_name="yolov7",
     background_color="#009000",
     output_dir="output_frames",
     output_video="output.mp4",
@@ -96,6 +97,7 @@ def segment_video(
             image_start=image_start,
             image_end=image_end,
             pbar=pbar,
+            format="jpg",
         )
         vid_to_im.get_images()
     # Get fps of video
@@ -115,31 +117,21 @@ def segment_video(
     else:
         frames = sorted(os.listdir(dir_frames))[image_start:image_end]
 
-    model_type = "vit_t"
+    frames = [f for f in frames if f.endswith(".jpg") or f.endswith(".png")]
 
     if torch.backends.mps.is_available():
         device = "mps"
     elif torch.cuda.is_available():
-
         device = "cuda"
     else:
         device = "cpu"
-    sam = sam_model_registry[model_type](checkpoint=mobile_sam_weights)
-    sam.to(device=device)
-    sam.eval()
 
-    predictor = SamPredictor(sam)
-
-    if not auto_detect:
-        if tracker_name == "yolov7":
-            model = yolov7.load("kadirnar/yolov7-tiny-v0.1", hf_model=True)
-            model.conf = 0.25  # NMS confidence threshold
-            model.iou = 0.45  # NMS IoU threshold
-            model.classes = None
-            image_processor = None
-        else:
-            model = YolosForObjectDetection.from_pretrained("hustvl/yolos-tiny")
-            image_processor = YolosImageProcessor.from_pretrained("hustvl/yolos-tiny")
+    predictor = build_efficienttam_video_predictor(
+        "configs/efficienttam/efficienttam_ti_512x512.yaml",
+        "./models/efficienttam_ti_512x512.pt",
+        device=device,
+        vos_optimized=False,
+    )
 
     output_frames = []
 
@@ -150,54 +142,80 @@ def segment_video(
 
     processed_frames = 0
     init_time = time.time()
-    for frame in pb:
-        processed_frames += 1
-        image_file = dir_frames + "/" + frame
-        image_pil = Image.open(image_file)
-        image_np = np.array(image_pil)
-        if not auto_detect:
-            bboxes = get_bboxes(image_file, image_pil, model, image_processor)
-            closest_bbox = get_closest_bbox(bboxes, bbox_orig)
-            input_box = np.array(closest_bbox)
-        else:
-            input_box = np.array([0, 0, image_np.shape[1], image_np.shape[0]])
-        predictor.set_image(image_np)
-        masks, _, _ = predictor.predict(
-            point_coords=None,
-            point_labels=None,
-            box=input_box[None, :],
-            multimask_output=True,
-        )
-        if reverse_mask:
-            mask = masks[0]
-            h, w = mask.shape[-2:]
-            mask_image = (
-                (mask).reshape(h, w, 1) * background_color.reshape(1, 1, -1)
-            ) * 255
-            masked_image = image_np * (1 - mask).reshape(h, w, 1)
-            masked_image = masked_image + mask_image
-            output_frames.append(masked_image)
-        else:
-            mask = masks[0]
-            h, w = mask.shape[-2:]
-            mask_image = (
-                (1 - mask).reshape(h, w, 1) * background_color.reshape(1, 1, -1)
-            ) * 255
-            masked_image = image_np * mask.reshape(h, w, 1)
-            masked_image = masked_image + mask_image
-            output_frames.append(masked_image)
 
-        if not pbar and processed_frames % 10 == 0:
-            remaining_time = (
-                (time.time() - init_time)
-                / processed_frames
-                * (len(frames) - processed_frames)
-            )
-            remaining_time = int(remaining_time)
-            remaining_time_str = f"{remaining_time//60}m {remaining_time%60}s"
-            print(
-                f"Processed frame {processed_frames}/{len(frames)} - Remaining time: {remaining_time_str}"
-            )
+    state = predictor.init_state(
+        video_path=dir_frames,
+        offload_video_to_cpu=True,
+        offload_state_to_cpu=True,
+        async_loading_frames=False,
+    )
+
+    predictor.add_new_points_or_box(
+        inference_state=state,
+        frame_idx=0,
+        obj_id=0,
+        box=np.array(bbox_orig),
+    )
+
+    all_masks = []
+
+    with (
+        torch.inference_mode(),
+        torch.autocast(device, dtype=torch.bfloat16),
+    ):
+        for f_idx, ids, logits in predictor.propagate_in_video(
+            state, start_frame_idx=0
+        ):
+            frame = frames[f_idx]
+
+            masks = (logits[0] > 0).cpu().numpy()
+            all_masks.append(masks[0])
+
+            processed_frames += 1
+            image_file = dir_frames + "/" + frame
+            image_pil = Image.open(image_file)
+            image_np = np.array(image_pil)
+
+            if reverse_mask:
+                mask = masks[0]
+                h, w = mask.shape[-2:]
+                mask_image = (
+                    (mask).reshape(h, w, 1) * background_color.reshape(1, 1, -1)
+                ) * 255
+                masked_image = image_np * (1 - mask).reshape(h, w, 1)
+                masked_image = masked_image + mask_image
+                output_frames.append(masked_image)
+            else:
+                mask = masks[0]
+                h, w = mask.shape[-2:]
+                mask_image = (
+                    (1 - mask).reshape(h, w, 1) * background_color.reshape(1, 1, -1)
+                ) * 255
+                masked_image = image_np * mask.reshape(h, w, 1)
+                masked_image = masked_image + mask_image
+                output_frames.append(masked_image)
+
+            if not pbar and processed_frames % 10 == 0:
+                current_time = time.time()
+                remaining_time = (
+                    (current_time - init_time)
+                    / processed_frames
+                    * (len(frames) - processed_frames)
+                )
+                remaining_time = int(remaining_time)
+                remaining_time_str = f"{remaining_time//60}m {remaining_time%60}s"
+                print(
+                    f"Processed frame {processed_frames}/{len(frames)} - ETA: {remaining_time_str} - FPS: {processed_frames / (current_time - init_time):.2f}"
+                )
+            elif pbar:
+                pb.set_description(
+                    f"Processed frame {processed_frames}/{len(frames)} - FPS: {processed_frames / (time.time() - init_time):.2f}"
+                )
+                pb.update(1)
+
+    if pbar:
+        pb.close()
+
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
@@ -294,9 +312,7 @@ if __name__ == "__main__":
         args.bbox_file,
         args.skip_vid2im,
         args.mobile_sam_weights,
-        args.auto_detect,
         args.output_dir,
         args.output_video,
-        args.tracker_name,
         args.background_color,
     )

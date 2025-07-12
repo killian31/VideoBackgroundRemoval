@@ -125,7 +125,6 @@ if video_file is not None:
                     bbox_file="temp_bbox.txt",
                     skip_vid2im=False,
                     mobile_sam_weights="./models/mobile_sam.pt",
-                    auto_detect=not use_bbox,
                     background_color=background_color,
                     output_video="video_segmented.mp4",
                     output_dir="temp_processed_images",
