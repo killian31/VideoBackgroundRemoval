@@ -18,6 +18,11 @@ from transformers import (
 TRACKER = "yonigozlan/EdgeTAM-hf"
 DETECTOR = "PekingU/rtdetr_v2_r18vd"
 SIZE = 512  # must be a multiple of 256
+LOST_AFTER, RETRY_EVERY = 3, 5  # frames
+
+
+class Cancelled(Exception):
+    pass
 
 
 def get_device():
@@ -52,6 +57,38 @@ def rank_subjects(boxes, scores, width, height):
     cy = (boxes[:, 1] + boxes[:, 3]) / 2 / height
     centrality = 1 - np.hypot(cx - 0.5, cy - 0.5) / np.hypot(0.5, 0.5)
     return np.argsort(-(scores * np.sqrt(area) * centrality)).tolist()
+
+
+def box_iou(a, b):
+    w = max(0, min(a[2], b[2]) - max(a[0], b[0]))
+    h = max(0, min(a[3], b[3]) - max(a[1], b[1]))
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - w * h
+    return w * h / union if union > 0 else 0.0
+
+
+def closest(subjects, box):
+    """The subject nearest to `box` in position and size."""
+
+    def distance(s):
+        b = s["box"]
+        dx = (b[0] + b[2] - box[0] - box[2]) / 2
+        dy = (b[1] + b[3] - box[1] - box[3]) / 2
+        size = np.log(
+            ((b[2] - b[0]) * (b[3] - b[1]) + 1)
+            / ((box[2] - box[0]) * (box[3] - box[1]) + 1)
+        )
+        return np.hypot(dx, dy) / np.hypot(box[2] - box[0], box[3] - box[1]) + abs(size)
+
+    return min(subjects, key=distance)
+
+
+def mask_box(alpha):
+    ys, xs = np.nonzero(alpha > 127)
+    return (
+        None
+        if len(xs) == 0
+        else [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1]
+    )
 
 
 def ffmpeg_exe():
@@ -120,16 +157,27 @@ class Segmenter:
 
     @torch.inference_mode()
     def segment(
-        self, video, output, box=None, color="#009000", fast=False, progress=None
+        self,
+        video,
+        output,
+        box=None,
+        color="#009000",
+        fast=False,
+        progress=None,
+        cancel=None,
     ):
         """Track the subject inside `box` (x0, y0, x1, y1 on the first frame) and write it on `color`."""
+        subjects = self.detect(first_frame(video))
         if box is None:
-            subjects = self.detect(first_frame(video))
             if not subjects:
                 raise ValueError(
                     "No subject found on the first frame. Give a bounding box."
                 )
             box = subjects[0]["box"]
+        # when the subject is lost, look for it again, but only if the detector knows what it is
+        label = next(
+            (s["label"] for s in subjects if box_iou(s["box"], box) > 0.5), None
+        )
 
         cap = cv2.VideoCapture(video)
         fps = cap.get(cv2.CAP_PROP_FPS) or 25
@@ -193,22 +241,40 @@ class Segmenter:
         session = self.processor.init_video_session(
             inference_device=self.device, dtype=self.dtype
         )
-        done, item = 0, True
+        keep = max(
+            self.tracker.num_maskmem, self.tracker.config.max_object_pointers_in_encoder
+        )
+        done, item, lost, last_box = 0, True, 0, box
         try:
             while not errors and (item := frames.get()) is not None:
+                if cancel is not None and cancel.is_set():
+                    raise Cancelled()
                 rgb, inputs = item
-                if done == 0:
+                prompt = box if done == 0 else None
+                if (
+                    label
+                    and lost >= LOST_AFTER
+                    and (lost - LOST_AFTER) % RETRY_EVERY == 0
+                ):
+                    found = [s for s in self.detect(rgb, 0.3) if s["label"] == label]
+                    if found:
+                        prompt = closest(found, last_box)["box"]
+                if prompt:
                     self.processor.add_inputs_to_inference_session(
                         inference_session=session,
-                        frame_idx=0,
+                        frame_idx=done,
                         obj_ids=1,
-                        input_boxes=[[[float(v) for v in box]]],
+                        input_boxes=[[[float(v) for v in prompt]]],
                         original_size=inputs.original_sizes[0],
                     )
                 result = self.tracker(
                     inference_session=session,
+                    frame_idx=done,
                     frame=inputs.pixel_values[0].to(self.device, self.dtype),
                 )
+                session.processed_frames.pop(done - 1, None)
+                for outputs in session.output_dict_per_obj.values():
+                    outputs["non_cond_frame_outputs"].pop(done - keep, None)
                 logits = self.processor.post_process_masks(
                     [result.pred_masks],
                     original_sizes=inputs.original_sizes,
@@ -218,6 +284,8 @@ class Segmenter:
                     (torch.sigmoid(logits.float()) * 255).to(torch.uint8).cpu().numpy()
                 )
                 masks.put((rgb, alpha[..., None].astype(np.uint16)))
+                found_box = mask_box(alpha)
+                lost, last_box = (0, found_box) if found_box else (lost + 1, last_box)
                 done += 1
                 if progress:
                     progress(done, max(total, done))

@@ -1,4 +1,6 @@
-from segment import hex_to_rgb, rank_subjects
+import numpy as np
+
+from segment import box_iou, closest, hex_to_rgb, mask_box, rank_subjects
 
 
 def test_rank_subjects():
@@ -16,7 +18,20 @@ def test_hex_to_rgb():
     assert hex_to_rgb("ffFFff") == (255, 255, 255)
 
 
+def test_boxes():
+    assert box_iou([0, 0, 10, 10], [0, 0, 10, 10]) == 1
+    assert box_iou([0, 0, 10, 10], [20, 20, 30, 30]) == 0
+    near, far, big = [100, 100, 120, 120], [500, 500, 520, 520], [95, 95, 300, 300]
+    subjects = [{"box": b} for b in (far, big, near)]
+    assert closest(subjects, [102, 98, 122, 118])["box"] == near
+    alpha = np.zeros((50, 80), np.uint8)
+    assert mask_box(alpha) is None
+    alpha[10:20, 30:45] = 255
+    assert mask_box(alpha) == [30, 10, 45, 20]
+
+
 if __name__ == "__main__":
+    test_boxes()
     test_rank_subjects()
     test_hex_to_rgb()
     print("ok")
