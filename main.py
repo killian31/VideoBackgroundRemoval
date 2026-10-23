@@ -28,7 +28,7 @@ def main():
     parser.add_argument(
         "--fast",
         action="store_true",
-        help="faster, but may lose the subject in long videos",
+        help="about twice as fast, slightly less precise",
     )
     parser.add_argument(
         "--device", choices=["cpu", "mps", "cuda"], help="default: best available"

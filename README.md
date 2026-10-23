@@ -71,7 +71,7 @@ options:
                         path to store the output video
   --background_color BACKGROUND_COLOR
                         background color for the output (hex)
-  --fast                faster, but may lose the subject in long videos
+  --fast                about twice as fast, slightly less precise
   --device {cpu,mps,cuda}
                         default: best available
 ```

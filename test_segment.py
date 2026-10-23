@@ -1,6 +1,6 @@
 import numpy as np
 
-from segment import box_iou, closest, hex_to_rgb, mask_box, rank_subjects
+from segment import box_distance, box_iou, closest, hex_to_rgb, mask_box, rank_subjects
 
 
 def test_rank_subjects():
@@ -24,6 +24,8 @@ def test_boxes():
     near, far, big = [100, 100, 120, 120], [500, 500, 520, 520], [95, 95, 300, 300]
     subjects = [{"box": b} for b in (far, big, near)]
     assert closest(subjects, [102, 98, 122, 118])["box"] == near
+    assert box_distance(near, near) == 0
+    assert box_distance(far, near) > 1 > box_distance([105, 100, 125, 120], near)
     alpha = np.zeros((50, 80), np.uint8)
     assert mask_box(alpha) is None
     alpha[10:20, 30:45] = 255

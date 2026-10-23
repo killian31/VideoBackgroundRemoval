@@ -66,20 +66,19 @@ def box_iou(a, b):
     return w * h / union if union > 0 else 0.0
 
 
+def box_distance(b, box):
+    """Center offset in units of `box`'s diagonal, plus the log size ratio."""
+    dx = (b[0] + b[2] - box[0] - box[2]) / 2
+    dy = (b[1] + b[3] - box[1] - box[3]) / 2
+    size = np.log(
+        ((b[2] - b[0]) * (b[3] - b[1]) + 1)
+        / ((box[2] - box[0]) * (box[3] - box[1]) + 1)
+    )
+    return np.hypot(dx, dy) / np.hypot(box[2] - box[0], box[3] - box[1]) + abs(size)
+
+
 def closest(subjects, box):
-    """The subject nearest to `box` in position and size."""
-
-    def distance(s):
-        b = s["box"]
-        dx = (b[0] + b[2] - box[0] - box[2]) / 2
-        dy = (b[1] + b[3] - box[1] - box[3]) / 2
-        size = np.log(
-            ((b[2] - b[0]) * (b[3] - b[1]) + 1)
-            / ((box[2] - box[0]) * (box[3] - box[1]) + 1)
-        )
-        return np.hypot(dx, dy) / np.hypot(box[2] - box[0], box[3] - box[1]) + abs(size)
-
-    return min(subjects, key=distance)
+    return min(subjects, key=lambda s: box_distance(s["box"], box))
 
 
 def mask_box(alpha):
@@ -237,44 +236,57 @@ class Segmenter:
         reader.start()
         writer.start()
 
+        # fast: shorter memory, and the model skips every other frame while it tracks
         self.tracker.num_maskmem = 3 if fast else 7
+        stride = 2 if fast else 1
         session = self.processor.init_video_session(
             inference_device=self.device, dtype=self.dtype
         )
         keep = max(
             self.tracker.num_maskmem, self.tracker.config.max_object_pointers_in_encoder
         )
-        done, item, lost, last_box = 0, True, 0, box
+        done, item, lost, last_box, t = 0, True, 0, box, 0
         try:
             while not errors and (item := frames.get()) is not None:
                 if cancel is not None and cancel.is_set():
                     raise Cancelled()
                 rgb, inputs = item
+                if done % stride and not lost:
+                    masks.put((rgb, alpha))
+                    done += 1
+                    if progress:
+                        progress(done, max(total, done))
+                    continue
                 prompt = box if done == 0 else None
                 if (
                     label
                     and lost >= LOST_AFTER
                     and (lost - LOST_AFTER) % RETRY_EVERY == 0
                 ):
-                    found = [s for s in self.detect(rgb, 0.3) if s["label"] == label]
-                    if found:
-                        prompt = closest(found, last_box)["box"]
+                    # the detector often renames an object seen from a new angle,
+                    # so a different label is fine if it is where the subject was
+                    found = self.detect(rgb, 0.3)
+                    same = [s for s in found if s["label"] == label]
+                    near = [s for s in found if box_distance(s["box"], last_box) < 1]
+                    if same or near:
+                        prompt = closest(same or near, last_box)["box"]
                 if prompt:
                     self.processor.add_inputs_to_inference_session(
                         inference_session=session,
-                        frame_idx=done,
+                        frame_idx=t,
                         obj_ids=1,
                         input_boxes=[[[float(v) for v in prompt]]],
                         original_size=inputs.original_sizes[0],
                     )
                 result = self.tracker(
                     inference_session=session,
-                    frame_idx=done,
+                    frame_idx=t,
                     frame=inputs.pixel_values[0].to(self.device, self.dtype),
                 )
-                session.processed_frames.pop(done - 1, None)
+                session.processed_frames.pop(t - 1, None)
                 for outputs in session.output_dict_per_obj.values():
-                    outputs["non_cond_frame_outputs"].pop(done - keep, None)
+                    outputs["non_cond_frame_outputs"].pop(t - keep, None)
+                t += 1
                 logits = self.processor.post_process_masks(
                     [result.pred_masks],
                     original_sizes=inputs.original_sizes,
@@ -283,8 +295,9 @@ class Segmenter:
                 alpha = (
                     (torch.sigmoid(logits.float()) * 255).to(torch.uint8).cpu().numpy()
                 )
-                masks.put((rgb, alpha[..., None].astype(np.uint16)))
                 found_box = mask_box(alpha)
+                alpha = alpha[..., None].astype(np.uint16)
+                masks.put((rgb, alpha))
                 lost, last_box = (0, found_box) if found_box else (lost + 1, last_box)
                 done += 1
                 if progress:
