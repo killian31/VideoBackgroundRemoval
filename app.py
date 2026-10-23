@@ -1,151 +1,156 @@
 import os
-import warnings
+import re
+import shutil
+import tempfile
+import threading
+import time
+import uuid
+from pathlib import Path
 
 import cv2
-import streamlit as st
-from PIL import Image, ImageDraw
+import uvicorn
+from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
-import redirect as rd
-from main import segment_video
+from segment import Segmenter, first_frame
 
-warnings.filterwarnings("ignore")
+ROOT = Path(__file__).parent
+JOBS = Path(tempfile.gettempdir()) / "vbr-jobs"
+MAX_UPLOAD = 500 * 1024 * 1024
+MAX_AGE = 2 * 3600
 
+segmenter = Segmenter()
+work_lock = threading.Lock()  # one video at a time; others wait in line
+jobs = {}
 
-def load_image(image_path):
-    return Image.open(image_path)
-
-
-def extract_first_frame(video_path, output_image_path):
-    """
-    Extract the first frame from a video file and save it to disk.
-
-    Parameters:
-        video_path (str): Path to the video file.
-        output_image_path (str): Path to save the extracted frame.
-
-    Returns:
-        str: Path to the saved frame.
-    """
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        raise ValueError(f"Error: Unable to open video file: {video_path}")
-    ret, frame = cap.read()
-    cap.release()
-    if not ret:
-        raise ValueError("Error: Unable to read the first frame from the video.")
-    cv2.imwrite(output_image_path, frame)
-
-    return output_image_path
+app = FastAPI()
 
 
-st.title("Video Background Removal")
-
-st.write(
-    "This app uses the Mobile-SAM model to remove the background from a video. "
-    "The model is based on the paper [Faster Segment Anything: Towards Lightweight SAM for Mobile Applications](https://arxiv.org/abs/2306.14289)."
-)
-st.write(
-    "How to use: Upload a video and click 'Segment Video'. The app will then process the video and remove the background. "
-    "You can also use a bounding box to specify the area to segment. "
-    "The app will then output the segmented video, that you can download. "
-    "Do not hesitate to hit the 'Stop/Reset' button if you encounter any issues (it usually solves them all) or want to start over."
-)
+class SegmentRequest(BaseModel):
+    box: list[int] = Field(min_length=4, max_length=4)
+    color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
+    fast: bool = False
 
 
-video_file = st.file_uploader("Upload a video", type=["mp4", "avi", "mov"])
+def job_dir(job_id):
+    if not re.fullmatch(r"[0-9a-f]{32}", job_id) or not (JOBS / job_id).is_dir():
+        raise HTTPException(404, "Unknown video")
+    return JOBS / job_id
 
-if video_file is not None:
-    st.video(video_file)
-    with open("temp_video.mp4", "wb") as f:
-        f.write(video_file.getbuffer())
 
-    if not os.path.exists("./temp_images"):
-        os.makedirs("./temp_images")
-    frame_path = extract_first_frame("temp_video.mp4", "temp_frame.jpg")
+def clean_old_jobs():
+    for d in JOBS.glob("*"):
+        if time.time() - d.stat().st_mtime > MAX_AGE:
+            shutil.rmtree(d, ignore_errors=True)
+            jobs.pop(d.name, None)
 
-    use_bbox = st.checkbox("Use bounding box", value=False)
-    background_color = st.color_picker("Background keying color", "#009000")
 
-    initial_frame = load_image(frame_path)
-    original_width, original_height = initial_frame.width, initial_frame.height
-    if use_bbox:
-        col1, col2 = st.columns(2)
+def prepare(d):
+    try:
+        frame = first_frame(str(d / "input"))
+    except ValueError:
+        shutil.rmtree(d, ignore_errors=True)
+        raise HTTPException(400, "Can't read this file as a video")
+    cv2.imwrite(
+        str(d / "frame.jpg"),
+        cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
+        [cv2.IMWRITE_JPEG_QUALITY, 90],
+    )
+    height, width = frame.shape[:2]
+    return {
+        "id": d.name,
+        "width": width,
+        "height": height,
+        "subjects": segmenter.detect(frame)[:10],
+    }
 
-        with col1:
-            xmin = st.slider("xmin", 0, original_width, original_width // 4)
-            ymin = st.slider("ymin", 0, original_height, original_height // 4)
-        with col2:
-            xmax = st.slider("xmax", 0, original_width, original_width // 2)
-            ymax = st.slider("ymax", 0, original_height, original_height // 2)
 
-        draw = ImageDraw.Draw(initial_frame)
-        draw.rectangle([xmin, ymin, xmax, ymax], outline="red", width=3)
-        st.image(initial_frame, caption="Bounding Box Preview", use_column_width=True)
-        if st.button("Save Bounding Box"):
-            with open("temp_bbox.txt", "w") as bbox_file:
-                bbox_file.write(f"{xmin} {ymin} {xmax} {ymax}")
-            st.write(f"Bounding box saved to {os.path.abspath('temp_bbox.txt')}")
+def new_job():
+    clean_old_jobs()
+    d = JOBS / uuid.uuid4().hex
+    d.mkdir(parents=True)
+    return d
 
-    col1, col2 = st.columns(2)
-    with col2:
-        if st.button(
-            "Stop/Reset",
-            key="stop",
-            help="Stop the process and reset the app",
-            type="primary",
-        ):
-            st.write("Stopping...")
-            os.system("rm -r ./temp_images")
-            os.system("rm ./temp_bbox.txt")
-            os.system("rm -r ./temp_processed_images")
-            os.system("rm ./temp_video.mp4")
-            os.system("rm ./temp_frame.jpg")
-            st.write("Process interrupted")
 
-    with col1:
-        if st.button(
-            "Segment Video", key="segment", help="Segment the video", type="secondary"
-        ):
-            if use_bbox:
-                if not os.path.exists("./temp_bbox.txt"):
-                    with open("temp_bbox.txt", "w") as bbox_file:
-                        bbox_file.write(f"{xmin} {ymin} {xmax} {ymax}")
-            else:
-                with open("temp_bbox.txt", "w") as bbox_file:
-                    bbox_file.write(f"0 0 {original_width} {original_height}")
+@app.post("/api/videos")
+def upload(file: UploadFile):
+    d = new_job()
+    size = 0
+    with open(d / "input", "wb") as f:
+        while chunk := file.file.read(1 << 20):
+            size += len(chunk)
+            if size > MAX_UPLOAD:
+                shutil.rmtree(d, ignore_errors=True)
+                raise HTTPException(413, "Videos up to 500 MB only")
+            f.write(chunk)
+    return prepare(d)
 
-            st.write("Segmenting video...")
-            so = st.empty()
-            with rd.stdouterr(to=st.sidebar):
-                segment_video(
-                    video_filename="temp_video.mp4",
-                    dir_frames="temp_images",
-                    image_start=0,
-                    image_end=0,
-                    bbox_file="temp_bbox.txt",
-                    skip_vid2im=False,
-                    mobile_sam_weights="./models/mobile_sam.pt",
-                    auto_detect=not use_bbox,
-                    background_color=background_color,
-                    output_video="video_segmented.mp4",
-                    output_dir="temp_processed_images",
-                    pbar=False,
-                    reverse_mask=not use_bbox,
+
+@app.post("/api/example")
+def example():
+    d = new_job()
+    shutil.copy(ROOT / "assets" / "example.mp4", d / "input")
+    return prepare(d)
+
+
+@app.get("/api/videos/{job_id}/frame.jpg")
+def frame(job_id: str):
+    return FileResponse(job_dir(job_id) / "frame.jpg")
+
+
+@app.post("/api/videos/{job_id}/segment", status_code=202)
+def start(job_id: str, req: SegmentRequest):
+    d = job_dir(job_id)
+    if jobs.get(job_id, {}).get("status") in ("waiting", "running"):
+        raise HTTPException(409, "Already running")
+    x0, y0, x1, y1 = req.box
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        raise HTTPException(422, "Box too small")
+    state = jobs[job_id] = {"status": "waiting", "done": 0, "total": 0, "fps": 0.0}
+
+    def progress(done, total):
+        state.update(
+            done=done, total=total, fps=round(done / (time.time() - state["start"]), 1)
+        )
+
+    def run():
+        with work_lock:
+            state.update(status="running", start=time.time())
+            try:
+                segmenter.segment(
+                    str(d / "input"),
+                    str(d / "result.mp4"),
+                    req.box,
+                    req.color,
+                    req.fast,
+                    progress,
                 )
+                state["status"] = "done"
+            except Exception as e:
+                state.update(status="error", error=str(e))
 
-            os.system("rm -rf ./temp_images")
-            os.system("rm -rf ./temp_bbox.txt")
-            os.system("rm -rf ./temp_processed_images")
-            os.system("rm -rf ./temp_video.mp4")
+    threading.Thread(target=run, daemon=True).start()
+    return {"status": "waiting"}
 
-            st.video("./video_segmented.mp4")
-            st.write(f"Video saved to {os.path.abspath('video_segmented.mp4')}")
 
-            vid_file = open("video_segmented.mp4", "rb")
-            vid_bytes = vid_file.read()
-            st.download_button(
-                label="Download Segmented Video",
-                data=vid_bytes,
-                file_name="video_segmented.mp4",
-            )
-            vid_file.close()
+@app.get("/api/videos/{job_id}/status")
+def status(job_id: str):
+    job_dir(job_id)
+    state = jobs.get(job_id, {"status": "idle"})
+    return {k: v for k, v in state.items() if k != "start"}
+
+
+@app.get("/api/videos/{job_id}/result.mp4")
+def result(job_id: str):
+    path = job_dir(job_id) / "result.mp4"
+    if jobs.get(job_id, {}).get("status") != "done":
+        raise HTTPException(404, "Not ready")
+    return FileResponse(path, media_type="video/mp4", filename="background-removed.mp4")
+
+
+app.mount("/", StaticFiles(directory=ROOT / "static", html=True), name="static")
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 7860)))

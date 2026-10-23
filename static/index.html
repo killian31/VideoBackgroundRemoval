@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Background Removal</title>
+<meta name="description" content="Remove the background around a subject in a video and put it on a green screen.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; min-width: 0; }
+
+:root {
+  color-scheme: light dark;
+  --paper: light-dark(oklch(94.5% 0.01 90), oklch(36% 0.2 268));
+  --ink: light-dark(oklch(42% 0.24 268), oklch(94.5% 0.01 90));
+  --ink-soft: color-mix(in oklab, var(--ink) 72%, var(--paper));
+  --ink-wash: color-mix(in oklab, var(--ink) 8%, var(--paper));
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "Schibsted Grotesk", system-ui, sans-serif;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  font: 400 clamp(1rem, 0.95rem + 0.25vw, 1.125rem)/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body { margin: 0; min-block-size: 100svh; background: var(--paper); color: var(--ink); display: flex; flex-direction: column; }
+::selection { background: var(--ink); color: var(--paper); }
+:focus-visible { outline: 2px solid currentColor; outline-offset: 0.2em; }
+a { color: inherit; text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+img, canvas, video { display: block; max-inline-size: 100%; }
+[hidden] { display: none !important; }
+
+.wrap { inline-size: 100%; max-inline-size: 72rem; margin-inline: auto; padding-inline: 1.25rem; }
+.mono { font-family: var(--mono); font-size: 0.8em; letter-spacing: 0.01em; }
+.soft { color: var(--ink-soft); }
+
+header { border-block-end: 2px solid var(--ink); }
+header .wrap { display: flex; justify-content: space-between; align-items: end; gap: 1rem; padding-block: 1.5rem 1rem; }
+h1 { margin: 0; font-weight: 800; font-size: clamp(1.75rem, 1rem + 3.5vw, 3.5rem); line-height: 0.9; letter-spacing: -0.04em; text-transform: uppercase; }
+
+main { flex: 1; padding-block: 1.5rem 3rem; }
+footer { border-block-start: 1px solid var(--ink); }
+footer .wrap { padding-block: 0.75rem; display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+
+button, .button {
+  font: 500 1rem/1 var(--sans); color: var(--ink); background: transparent;
+  border: 1px solid var(--ink); border-radius: 0; padding: 0.7rem 1rem; cursor: pointer;
+  text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  touch-action: manipulation; transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out), scale 120ms var(--ease-out);
+}
+button:active, .button:active { scale: 0.98; }
+.primary { background: var(--ink); color: var(--paper); }
+@media (hover: hover) and (pointer: fine) {
+  button:hover, .button:hover { background: var(--ink); color: var(--paper); }
+  .primary:hover { background: color-mix(in oklab, var(--ink) 85%, var(--paper)); }
+}
+button:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+.link { border: 0; padding: 0; text-decoration: underline; text-underline-offset: 0.18em; text-decoration-thickness: 1px; font-weight: 400; }
+@media (hover: hover) and (pointer: fine) { .link:hover { background: var(--ink); color: var(--paper); text-decoration: none; } }
+
+/* drop */
+.drop {
+  display: grid; place-content: center; text-align: center; gap: 1.25rem;
+  min-block-size: min(60svh, 28rem); padding: 2rem; cursor: pointer;
+  border: 2px dashed var(--ink); background: var(--paper);
+  transition: background-color 150ms var(--ease-out);
+}
+.drop.over, .drop:focus-within { background: var(--ink-wash); }
+.drop b { display: block; font-weight: 500; font-size: clamp(1.4rem, 1rem + 1.5vw, 2rem); letter-spacing: -0.02em; }
+.coarse { display: none !important; }
+@media (pointer: coarse) { .fine { display: none !important; } .coarse { display: block !important; } .drop { min-block-size: 14rem; } }
+.drop input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; }
+.below { margin-block-start: 1rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+
+/* editor */
+.editor { display: grid; grid-template-columns: 1fr 17rem; gap: 1.5rem; align-items: start; }
+@media (width < 52rem) { .editor { grid-template-columns: 1fr; } }
+.stage { position: relative; border: 1px solid var(--ink); background: var(--ink-wash); }
+.stage canvas { inline-size: 100%; block-size: auto; cursor: crosshair; touch-action: none; }
+.stage video { inline-size: 100%; }
+.panel { display: grid; gap: 1.5rem; }
+.panel section { display: grid; gap: 0.6rem; }
+.label { font-family: var(--mono); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
+.panel p { margin: 0; }
+
+
+.swatches { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.swatch { inline-size: 2.25rem; block-size: 2.25rem; padding: 0; border: 1px solid var(--ink); background: var(--c); position: relative; }
+.swatch[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .swatch:hover { background: var(--c); } }
+.custom { position: relative; overflow: hidden; display: grid; place-items: center; cursor: pointer; }
+.custom:not(.set) { background: var(--paper); border-style: dashed; }
+.custom:not(.set)::after { content: "+"; font: 400 1.25rem/1 var(--sans); pointer-events: none; }
+.custom input { position: absolute; inset: 0; opacity: 0; inline-size: 100%; block-size: 100%; border: 0; padding: 0; cursor: pointer; }
+
+.check { display: flex; gap: 0.6rem; align-items: start; cursor: pointer; }
+.check input { accent-color: var(--ink); inline-size: 1.1rem; block-size: 1.1rem; margin: 0.2rem 0 0; flex: none; }
+
+.actions { display: grid; gap: 0.75rem; }
+
+.progress { block-size: 0.5rem; border: 1px solid var(--ink); background: var(--paper); }
+.progress div { block-size: 100%; inline-size: 0; background: var(--ink); transition: inline-size 300ms linear; }
+.waiting .progress div { inline-size: 30%; animation: slide 1.2s var(--ease-out) infinite alternate; }
+@keyframes slide { to { translate: 233% 0; } }
+
+.error { border: 1px solid var(--ink); background: var(--ink-wash); padding: 0.75rem 1rem; margin-block-end: 1rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Video<br>Background<br>Removal</h1>
+    <a class="mono" href="https://github.com/killian31/VideoBackgroundRemoval">GitHub</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="error" id="error" role="alert" hidden></p>
+
+  <div id="step-drop">
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept="video/*">
+      <span>
+        <b class="fine">Drop a video here</b>
+        <span class="soft fine">or click to choose one</span>
+        <b class="coarse">Choose a video</b>
+      </span>
+      <span class="mono soft">MP4, MOV, WebM · up to 500 MB</span>
+    </label>
+    <div class="below">
+      <button class="link" id="example">Use the example video</button>
+      <span class="mono soft" id="upload-status" aria-live="polite"></span>
+    </div>
+  </div>
+
+  <div class="editor" id="step-edit" hidden>
+    <div class="stage">
+      <canvas id="canvas" tabindex="0" role="img" aria-label="First frame of the video. Use the arrow keys to switch subjects, or drag to draw a box."></canvas>
+      <video id="result" controls playsinline loop hidden></video>
+    </div>
+
+    <div class="panel">
+      <section id="pick">
+        <span class="label">Subject</span>
+        <p id="hint"></p>
+      </section>
+
+      <section id="options">
+        <span class="label">Background</span>
+        <div class="swatches" id="swatches">
+          <button class="swatch" style="--c:#009000" data-color="#009000" aria-label="Green" aria-pressed="true"></button>
+          <button class="swatch" style="--c:#0047bb" data-color="#0047bb" aria-label="Blue" aria-pressed="false"></button>
+          <button class="swatch" style="--c:#000000" data-color="#000000" aria-label="Black" aria-pressed="false"></button>
+          <button class="swatch" style="--c:#ffffff" data-color="#ffffff" aria-label="White" aria-pressed="false"></button>
+          <label class="swatch custom" id="custom" title="Custom color">
+            <input type="color" id="custom-color" value="#ff00ff" aria-label="Custom color">
+          </label>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="fast">
+          <span>Fast mode<br><span class="soft mono">Faster, but may lose the subject in long videos.</span></span>
+        </label>
+      </section>
+
+      <section id="work" hidden>
+        <span class="label" id="work-label">Working</span>
+        <div class="progress"><div id="bar"></div></div>
+        <span class="mono soft" id="work-status" aria-live="polite"></span>
+      </section>
+
+      <div class="actions" id="edit-actions">
+        <button class="primary" id="run" disabled>Remove background</button>
+        <button class="link" id="restart">Use another video</button>
+      </div>
+
+      <div class="actions" id="done-actions" hidden>
+        <span class="mono soft" id="done-status"></span>
+        <a class="button primary" id="download" download="background-removed.mp4">Download</a>
+        <button id="again">Pick another subject</button>
+        <button class="link" id="restart-done">Use another video</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap mono soft">
+    <span>Tracking: EdgeTAM · Detection: RT-DETRv2</span>
+    <span>The server deletes uploaded videos after 2 hours.</span>
+  </div>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const canvas = $("canvas"), ctx = canvas.getContext("2d");
+const tap = matchMedia("(pointer: coarse)").matches ? "Tap" : "Click";
+const state = { id: null, image: null, subjects: [], box: null, selected: -1, hover: -1, color: "#009000", drag: null };
+
+function showError(message) { $("error").textContent = message; $("error").hidden = !message; }
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Something went wrong. Try again.");
+  return body;
+}
+
+function show(step) {
+  $("step-drop").hidden = step !== "drop";
+  $("step-edit").hidden = step === "drop";
+  const editing = step === "edit", working = step === "work", done = step === "done";
+  $("pick").hidden = !editing;
+  $("options").hidden = !editing;
+  $("edit-actions").hidden = !editing;
+  $("work").hidden = !working;
+  $("done-actions").hidden = !done;
+  canvas.hidden = done;
+  $("result").hidden = !done;
+  canvas.style.pointerEvents = editing ? "" : "none";
+  canvas.style.opacity = working ? "0.5" : "";
+}
+
+// ---- upload
+
+async function load(request) {
+  showError("");
+  $("upload-status").textContent = "Uploading and looking for subjects…";
+  try {
+    const video = await request();
+    const image = new Image();
+    image.src = `/api/videos/${video.id}/frame.jpg`;
+    await image.decode();
+    Object.assign(state, { id: video.id, image, subjects: video.subjects, selected: video.subjects.length ? 0 : -1, hover: -1 });
+    state.box = video.subjects.length ? video.subjects[0].box : null;
+    canvas.width = video.width;
+    canvas.height = video.height;
+    renderSubjects();
+    draw();
+    show("edit");
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    $("upload-status").textContent = "";
+  }
+}
+
+function upload(file) {
+  if (!file) return;
+  const form = new FormData();
+  form.append("file", file);
+  load(() => api("/api/videos", { method: "POST", body: form }));
+}
+
+$("file").addEventListener("change", (e) => upload(e.target.files[0]));
+$("example").addEventListener("click", () => load(() => api("/api/example", { method: "POST" })));
+const drop = $("drop");
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); upload(e.dataTransfer.files[0]); });
+
+// ---- subject picking
+
+function renderSubjects() {
+  $("hint").textContent = state.subjects.length
+    ? `${tap} a subject, or drag to draw a box around it.`
+    : "No subject found. Drag to draw a box around it.";
+  $("run").disabled = !state.box;
+}
+
+function select(i) {
+  state.selected = i;
+  state.box = state.subjects[i].box;
+  renderSubjects();
+  draw();
+}
+
+function draw() {
+  const { width: w, height: h } = canvas, k = w / canvas.clientWidth || 1;
+  ctx.clearRect(0, 0, w, h);
+  if (!state.image) return;
+  ctx.drawImage(state.image, 0, 0, w, h);
+  const box = state.drag?.box || state.box;
+
+  if (box) {
+    const [x0, y0, x1, y1] = box;
+    ctx.fillStyle = "rgb(0 0 0 / 0.45)";
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.rect(x0, y1, x1 - x0, y0 - y1);
+    ctx.fill("evenodd");
+  }
+
+  state.subjects.forEach((s, i) => {
+    if (i === state.selected && !state.drag) return;
+    const [x0, y0, x1, y1] = s.box;
+    ctx.lineWidth = (i === state.hover ? 2.5 : 1.5) * k;
+    ctx.setLineDash(i === state.hover ? [] : [6 * k, 4 * k]);
+    ctx.strokeStyle = "white";
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  });
+  ctx.setLineDash([]);
+
+  if (box) {
+    const [x0, y0, x1, y1] = box;
+    ctx.lineWidth = 3 * k;
+    ctx.strokeStyle = "white";
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  }
+}
+
+function point(e) {
+  const r = canvas.getBoundingClientRect();
+  return [
+    Math.max(0, Math.min(canvas.width, ((e.clientX - r.left) / r.width) * canvas.width)),
+    Math.max(0, Math.min(canvas.height, ((e.clientY - r.top) / r.height) * canvas.height)),
+  ];
+}
+
+function hit([x, y]) {
+  let best = -1, bestArea = Infinity;
+  state.subjects.forEach(({ box: [x0, y0, x1, y1] }, i) => {
+    const area = (x1 - x0) * (y1 - y0);
+    if (x >= x0 && x <= x1 && y >= y0 && y <= y1 && area < bestArea) { best = i; bestArea = area; }
+  });
+  return best;
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  state.drag = { start: point(e), box: null };
+});
+canvas.addEventListener("pointermove", (e) => {
+  const p = point(e);
+  if (!state.drag) {
+    const h = hit(p);
+    if (h !== state.hover) { state.hover = h; draw(); }
+    return;
+  }
+  const [sx, sy] = state.drag.start;
+  if (Math.hypot(p[0] - sx, p[1] - sy) < 8 * (canvas.width / canvas.clientWidth)) return;
+  state.drag.box = [Math.min(sx, p[0]), Math.min(sy, p[1]), Math.max(sx, p[0]), Math.max(sy, p[1])].map(Math.round);
+  draw();
+});
+canvas.addEventListener("pointerup", (e) => {
+  const drag = state.drag;
+  state.drag = null;
+  if (drag?.box) {
+    state.box = drag.box;
+    state.selected = -1;
+    renderSubjects();
+    draw();
+  } else {
+    const i = hit(point(e));
+    if (i >= 0) select(i); else draw();
+  }
+});
+canvas.addEventListener("pointerleave", () => { if (!state.drag && state.hover >= 0) { state.hover = -1; draw(); } });
+canvas.addEventListener("keydown", (e) => {
+  const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+  if (!step || !state.subjects.length) return;
+  e.preventDefault();
+  const n = state.subjects.length;
+  select((Math.max(state.selected, 0) + step + n) % n);
+});
+new ResizeObserver(draw).observe(canvas);
+
+// ---- options
+
+$("swatches").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-color]");
+  if (b) pickColor(b.dataset.color, b);
+});
+$("custom-color").addEventListener("input", (e) => {
+  $("custom").classList.add("set");
+  $("custom").style.setProperty("--c", e.target.value);
+  pickColor(e.target.value, $("custom"));
+});
+$("custom").addEventListener("click", () => {
+  if ($("custom").classList.contains("set")) pickColor($("custom-color").value, $("custom"));
+});
+function pickColor(color, el) {
+  state.color = color;
+  document.querySelectorAll(".swatch").forEach((s) => s.setAttribute("aria-pressed", String(s === el)));
+}
+
+// ---- run
+
+$("run").addEventListener("click", async () => {
+  showError("");
+  try {
+    await api(`/api/videos/${state.id}/segment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ box: state.box, color: state.color, fast: $("fast").checked }),
+    });
+  } catch (e) {
+    return showError(e.message);
+  }
+  show("work");
+  poll();
+});
+
+async function poll() {
+  let s;
+  try {
+    s = await api(`/api/videos/${state.id}/status`);
+  } catch (e) {
+    show("edit");
+    return showError(e.message);
+  }
+  const waiting = s.status === "waiting" || (s.status === "running" && !s.total);
+  $("work").classList.toggle("waiting", waiting);
+  $("work-label").textContent = s.status === "waiting" ? "In line" : "Working";
+  $("work-status").textContent = s.status === "waiting"
+    ? "Waiting for another video to finish."
+    : s.total ? `${s.done} / ${s.total} frames · ${s.fps} fps` : "Starting…";
+  $("bar").style.inlineSize = waiting ? "" : `${(100 * s.done) / Math.max(1, s.total)}%`;
+
+  if (s.status === "done") {
+    const url = `/api/videos/${state.id}/result.mp4?t=${Date.now()}`;
+    $("result").src = url;
+    $("download").href = url;
+    $("done-status").textContent = `Done · ${s.done} frames at ${s.fps} fps`;
+    show("done");
+    $("result").play().catch(() => {});
+  } else if (s.status === "error") {
+    show("edit");
+    showError(s.error || "Something went wrong. Try again.");
+  } else {
+    setTimeout(poll, 500);
+  }
+}
+
+$("again").addEventListener("click", () => { $("result").pause(); show("edit"); draw(); });
+function restart() {
+  $("result").pause();
+  $("file").value = "";
+  Object.assign(state, { id: null, image: null, subjects: [], box: null, selected: -1 });
+  showError("");
+  show("drop");
+}
+$("restart").addEventListener("click", restart);
+$("restart-done").addEventListener("click", restart);
+</script>
+</body>
+</html>
