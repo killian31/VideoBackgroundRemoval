@@ -415,6 +415,12 @@ $("cancel").addEventListener("click", async () => {
   await api(`/api/videos/${state.id}/cancel`, { method: "POST" }).catch((e) => showError(e.message));
 });
 
+function timeLeft({ done, total, fps }) {
+  const seconds = fps > 0 ? (total - done) / fps : 0;
+  if (seconds < 10) return "";
+  return seconds < 90 ? ` · ${Math.round(seconds)} s left` : ` · ${Math.round(seconds / 60)} min left`;
+}
+
 async function poll(run) {
   if (run !== state.run) return;
   let s;
@@ -430,7 +436,7 @@ async function poll(run) {
   $("work-label").textContent = s.status === "waiting" ? "In line" : "Working";
   $("work-status").textContent = s.status === "waiting"
     ? "Waiting for another video to finish."
-    : s.total ? `${s.done} / ${s.total} frames · ${s.fps} fps` : "Starting…";
+    : s.total ? `${s.done} / ${s.total} frames · ${s.fps} fps${timeLeft(s)}` : "Starting…";
   $("bar").style.inlineSize = waiting ? "" : `${(100 * s.done) / Math.max(1, s.total)}%`;
 
   if (s.status === "done") {

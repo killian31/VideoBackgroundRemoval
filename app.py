@@ -20,6 +20,9 @@ ROOT = Path(__file__).parent
 JOBS = Path(tempfile.gettempdir()) / "vbr-jobs"
 MAX_UPLOAD = 500 * 1024 * 1024
 MAX_AGE = 2 * 3600
+MAX_SECONDS = float(
+    os.environ.get("MAX_SECONDS", 0)
+)  # 0 = no limit; set on shared servers
 
 segmenter = Segmenter()
 work_lock = threading.Lock()  # one video at a time; others wait in line
@@ -53,6 +56,16 @@ def prepare(d):
     except ValueError:
         shutil.rmtree(d, ignore_errors=True)
         raise HTTPException(400, "Can't read this file as a video")
+    cap = cv2.VideoCapture(str(d / "input"))
+    seconds = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or 25)
+    cap.release()
+    if MAX_SECONDS and seconds > MAX_SECONDS:
+        shutil.rmtree(d, ignore_errors=True)
+        raise HTTPException(
+            413,
+            f"This demo takes videos up to {MAX_SECONDS:g} seconds. "
+            "Run it on your own computer for longer ones.",
+        )
     cv2.imwrite(
         str(d / "frame.jpg"),
         cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
