@@ -77,9 +77,9 @@ button:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
 /* editor */
 .editor { display: grid; grid-template-columns: 1fr 17rem; gap: 1.5rem; align-items: start; }
 @media (width < 52rem) { .editor { grid-template-columns: 1fr; } }
-.stage { position: relative; border: 1px solid var(--ink); background: var(--ink-wash); }
-.stage canvas { inline-size: 100%; block-size: auto; cursor: crosshair; touch-action: none; }
-.stage video { inline-size: 100%; }
+.stage { position: relative; display: grid; justify-items: center; border: 1px solid var(--ink); background: var(--ink-wash); }
+.stage canvas, .stage video { inline-size: min(100%, calc(min(70svh, 44rem) * var(--ar, 1.78))); block-size: auto; }
+.stage canvas { cursor: crosshair; touch-action: none; }
 .panel { display: grid; gap: 1.5rem; }
 .panel section { display: grid; gap: 0.6rem; }
 .label { font-family: var(--mono); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
@@ -140,7 +140,7 @@ button:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
   </div>
 
   <div class="editor" id="step-edit" hidden>
-    <div class="stage">
+    <div class="stage" id="stage">
       <canvas id="canvas" tabindex="0" role="img" aria-label="First frame of the video. Use the arrow keys to switch subjects, or drag to draw a box."></canvas>
       <video id="result" controls playsinline loop hidden></video>
     </div>
@@ -172,6 +172,7 @@ button:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
         <span class="label" id="work-label">Working</span>
         <div class="progress"><div id="bar"></div></div>
         <span class="mono soft" id="work-status" aria-live="polite"></span>
+        <button id="cancel">Cancel</button>
       </section>
 
       <div class="actions" id="edit-actions">
@@ -200,7 +201,7 @@ button:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
 const $ = (id) => document.getElementById(id);
 const canvas = $("canvas"), ctx = canvas.getContext("2d");
 const tap = matchMedia("(pointer: coarse)").matches ? "Tap" : "Click";
-const state = { id: null, image: null, subjects: [], box: null, selected: -1, hover: -1, color: "#009000", drag: null };
+const state = { id: null, image: null, subjects: [], box: null, selected: -1, hover: -1, color: "#009000", drag: null, run: 0 };
 
 function showError(message) { $("error").textContent = message; $("error").hidden = !message; }
 
@@ -240,6 +241,7 @@ async function load(request) {
     state.box = video.subjects.length ? video.subjects[0].box : null;
     canvas.width = video.width;
     canvas.height = video.height;
+    $("stage").style.setProperty("--ar", video.width / video.height);
     renderSubjects();
     draw();
     show("edit");
@@ -403,10 +405,18 @@ $("run").addEventListener("click", async () => {
     return showError(e.message);
   }
   show("work");
-  poll();
+  poll(++state.run);
 });
 
-async function poll() {
+$("cancel").addEventListener("click", async () => {
+  state.run++;
+  show("edit");
+  draw();
+  await api(`/api/videos/${state.id}/cancel`, { method: "POST" }).catch((e) => showError(e.message));
+});
+
+async function poll(run) {
+  if (run !== state.run) return;
   let s;
   try {
     s = await api(`/api/videos/${state.id}/status`);
@@ -414,6 +424,7 @@ async function poll() {
     show("edit");
     return showError(e.message);
   }
+  if (run !== state.run) return;
   const waiting = s.status === "waiting" || (s.status === "running" && !s.total);
   $("work").classList.toggle("waiting", waiting);
   $("work-label").textContent = s.status === "waiting" ? "In line" : "Working";
@@ -433,12 +444,14 @@ async function poll() {
     show("edit");
     showError(s.error || "Something went wrong. Try again.");
   } else {
-    setTimeout(poll, 500);
+    setTimeout(() => poll(run), 500);
   }
 }
 
 $("again").addEventListener("click", () => { $("result").pause(); show("edit"); draw(); });
 function restart() {
+  if (!$("work").hidden) api(`/api/videos/${state.id}/cancel`, { method: "POST" }).catch(() => {});
+  state.run++;
   $("result").pause();
   $("file").value = "";
   Object.assign(state, { id: null, image: null, subjects: [], box: null, selected: -1 });

@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from segment import Segmenter, first_frame
+from segment import Cancelled, Segmenter, first_frame
 
 ROOT = Path(__file__).parent
 JOBS = Path(tempfile.gettempdir()) / "vbr-jobs"
@@ -108,7 +108,9 @@ def start(job_id: str, req: SegmentRequest):
     x0, y0, x1, y1 = req.box
     if x1 - x0 < 4 or y1 - y0 < 4:
         raise HTTPException(422, "Box too small")
+    cancel = threading.Event()
     state = jobs[job_id] = {"status": "waiting", "done": 0, "total": 0, "fps": 0.0}
+    state["cancel"] = cancel
 
     def progress(done, total):
         state.update(
@@ -117,6 +119,8 @@ def start(job_id: str, req: SegmentRequest):
 
     def run():
         with work_lock:
+            if cancel.is_set():
+                return
             state.update(status="running", start=time.time())
             try:
                 segmenter.segment(
@@ -126,8 +130,11 @@ def start(job_id: str, req: SegmentRequest):
                     req.color,
                     req.fast,
                     progress,
+                    cancel,
                 )
                 state["status"] = "done"
+            except Cancelled:
+                pass
             except Exception as e:
                 state.update(status="error", error=str(e))
 
@@ -135,11 +142,21 @@ def start(job_id: str, req: SegmentRequest):
     return {"status": "waiting"}
 
 
+@app.post("/api/videos/{job_id}/cancel")
+def cancel(job_id: str):
+    job_dir(job_id)
+    state = jobs.get(job_id)
+    if state and state["status"] in ("waiting", "running"):
+        state["cancel"].set()
+        state["status"] = "cancelled"
+    return {"status": "cancelled"}
+
+
 @app.get("/api/videos/{job_id}/status")
 def status(job_id: str):
     job_dir(job_id)
     state = jobs.get(job_id, {"status": "idle"})
-    return {k: v for k, v in state.items() if k != "start"}
+    return {k: v for k, v in state.items() if k not in ("start", "cancel")}
 
 
 @app.get("/api/videos/{job_id}/result.mp4")
