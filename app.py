@@ -28,6 +28,11 @@ segmenter = Segmenter()
 work_lock = threading.Lock()  # one video at a time; others wait in line
 jobs = {}
 
+
+def job_status(job_id):
+    state = jobs.get(job_id)
+    return state["status"] if state else None
+
 app = FastAPI()
 
 
@@ -116,7 +121,7 @@ def frame(job_id: str):
 @app.post("/api/videos/{job_id}/segment", status_code=202)
 def start(job_id: str, req: SegmentRequest):
     d = job_dir(job_id)
-    if jobs.get(job_id, {}).get("status") in ("waiting", "running"):
+    if job_status(job_id) in ("waiting", "running"):
         raise HTTPException(409, "Already running")
     x0, y0, x1, y1 = req.box
     if x1 - x0 < 4 or y1 - y0 < 4:
@@ -147,7 +152,7 @@ def start(job_id: str, req: SegmentRequest):
                 )
                 state["status"] = "done"
             except Cancelled:
-                pass
+                state["status"] = "cancelled"
             except Exception as e:
                 state.update(status="error", error=str(e))
 
@@ -175,7 +180,7 @@ def status(job_id: str):
 @app.get("/api/videos/{job_id}/result.mp4")
 def result(job_id: str):
     path = job_dir(job_id) / "result.mp4"
-    if jobs.get(job_id, {}).get("status") != "done":
+    if job_status(job_id) != "done":
         raise HTTPException(404, "Not ready")
     return FileResponse(path, media_type="video/mp4", filename="background-removed.mp4")
 
